@@ -28,6 +28,7 @@
 	import MessageInput from './MessageInput.svelte';
 	import FolderPlaceholder from './Placeholder/FolderPlaceholder.svelte';
 	import FolderTitle from './Placeholder/FolderTitle.svelte';
+	import WorkspacePanel from './WorkspacePanel.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -58,6 +59,8 @@
 	export let onUpload: Function = (e) => {};
 	export let onSelect = (e) => {};
 	export let onChange = (e) => {};
+	export let workspaceRoute = null;
+	export let workspaceRoutingMode: 'auto' | 'manual' = 'auto';
 
 	export let toolServers = [];
 
@@ -65,12 +68,14 @@
 
 	let models = [];
 	let selectedModelIdx = 0;
+	let selectedModelNames = [];
 
 	$: if (selectedModels.length > 0) {
 		selectedModelIdx = models.length - 1;
 	}
 
 	$: models = selectedModels.map((id) => $_models.find((m) => m.id === id));
+	$: selectedModelNames = models.map((model) => model?.name).filter((name) => name);
 </script>
 
 <div class="m-auto w-full max-w-6xl px-2 @2xl:px-20 translate-y-6 py-24 text-center">
@@ -204,6 +209,15 @@
 			{/if}
 
 			<div class="text-base font-normal @md:max-w-3xl w-full py-3 {atSelectedModel ? 'mt-2' : ''}">
+				<div class="mb-4">
+					<WorkspacePanel
+						route={workspaceRoute}
+						mode={workspaceRoutingMode}
+						{selectedModelNames}
+						showCapabilities={true}
+					/>
+				</div>
+
 				<MessageInput
 					bind:this={messageInput}
 					{history}

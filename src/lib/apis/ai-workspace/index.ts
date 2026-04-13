@@ -8,6 +8,9 @@ export type WorkspaceRoute = {
 	selected_model_name?: string | null;
 	required_capabilities: string[];
 	features: Record<string, boolean>;
+	input_sources: string[];
+	workflow: string[];
+	confidence: 'low' | 'medium' | 'high';
 	memory_recommended: boolean;
 	reasons: string[];
 	summary: string;

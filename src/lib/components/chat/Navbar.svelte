@@ -7,6 +7,7 @@
 		banners,
 		chatId,
 		config,
+		models,
 		mobile,
 		settings,
 		showArchivedChats,
@@ -38,6 +39,7 @@
 	import ChatPlus from '../icons/ChatPlus.svelte';
 	import ChatCheck from '../icons/ChatCheck.svelte';
 	import Knobs from '../icons/Knobs.svelte';
+	import WorkspacePanel from './WorkspacePanel.svelte';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 	import { updateUserSettings } from '$lib/apis/users';
 
@@ -62,10 +64,16 @@
 
 	let showShareChatModal = false;
 	let showDownloadChatModal = false;
+	let selectedModelNames = [];
+
+	$: selectedModelNames = (selectedModels ?? [])
+		.map((modelId) => $models.find((model) => model.id === modelId)?.name ?? modelId)
+		.filter((name) => name);
 
 	const setWorkspaceRoutingMode = async (mode: 'auto' | 'manual') => {
-		settings.set({ ...$settings, workspaceRoutingMode: mode });
-		await updateUserSettings(localStorage.token, { ui: $settings }).catch((error) => {
+		const nextSettings = { ...$settings, workspaceRoutingMode: mode };
+		settings.set(nextSettings);
+		await updateUserSettings(localStorage.token, { ui: nextSettings }).catch((error) => {
 			console.error('Failed to save workspace routing mode', error);
 			toast.error($i18n.t('Failed to save settings'));
 		});
@@ -149,21 +157,14 @@
 								</button>
 							</div>
 
-							{#if workspaceRoutingMode === 'auto' && workspaceRoute}
-								<div
-									class="min-w-0 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-1.5 text-[11px] text-emerald-800 dark:border-emerald-900/80 dark:bg-emerald-950/50 dark:text-emerald-200"
-								>
-									<span class="shrink-0 font-medium">AI Workspace</span>
-									<span class="truncate">{workspaceRoute.summary}</span>
-									{#each Object.entries(workspaceRoute.features ?? {}).filter(([, enabled]) => enabled) as [featureName]}
-										<span
-											class="shrink-0 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide dark:bg-gray-900/70"
-										>
-											{featureName.replaceAll('_', ' ')}
-										</span>
-									{/each}
-								</div>
-							{/if}
+							<div class="min-w-0 flex-1">
+								<WorkspacePanel
+									route={workspaceRoute}
+									mode={workspaceRoutingMode}
+									{selectedModelNames}
+									compact={true}
+								/>
+							</div>
 						</div>
 					</div>
 				</div>

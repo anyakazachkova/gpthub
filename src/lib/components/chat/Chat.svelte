@@ -140,6 +140,9 @@
 	let selectedModels = [''];
 	let atSelectedModel: Model | undefined;
 	let workspaceRoute: WorkspaceRoute | null = null;
+	let workspaceRoutePreviewKey = '';
+	let workspaceRoutePreviewTimeout: ReturnType<typeof setTimeout> | null = null;
+	let workspaceRouteRequestVersion = 0;
 	let selectedModelIds = [];
 	$: if (atSelectedModel !== undefined) {
 		selectedModelIds = [atSelectedModel.id];
@@ -177,13 +180,133 @@
 	let files = [];
 	let params = {};
 
+	const isMemoryFeatureAvailable = () =>
+		($config?.features?.enable_memories ?? false) &&
+		($user?.role === 'admin' || ($user?.permissions?.features?.memory ?? true));
+
+	const canUseWorkspaceRouting = () =>
+		($settings?.workspaceRoutingMode ?? 'auto') === 'auto' && atSelectedModel === undefined;
+
+	const getWorkspaceRouteFiles = (requestFiles = []) =>
+		requestFiles.map((file) => ({
+			id: file?.id ?? undefined,
+			type: file?.type ?? undefined,
+			content_type: file?.content_type ?? undefined,
+			name: file?.name ?? file?.url ?? undefined
+		}));
+
+	const getWorkspaceRouteBody = (userPrompt, requestFiles) => ({
+		prompt: userPrompt,
+		files: getWorkspaceRouteFiles(requestFiles),
+		selected_model_ids: selectedModels.filter((modelId) => modelId),
+		current_features: {
+			web_search: webSearchEnabled,
+			image_generation: imageGenerationEnabled,
+			memory: isMemoryFeatureAvailable() ? ($settings?.memory ?? false) : false
+		}
+	});
+
+	const getWorkspaceRouteKey = (userPrompt, requestFiles) =>
+		JSON.stringify(getWorkspaceRouteBody(userPrompt, requestFiles));
+
+	const clearWorkspaceRoutePreview = () => {
+		if (workspaceRoutePreviewTimeout) {
+			clearTimeout(workspaceRoutePreviewTimeout);
+			workspaceRoutePreviewTimeout = null;
+		}
+
+		workspaceRouteRequestVersion += 1;
+		workspaceRoutePreviewKey = '';
+		workspaceRoute = null;
+	};
+
+	const previewWorkspaceRoute = async (userPrompt, requestFiles) => {
+		if (!canUseWorkspaceRouting()) {
+			clearWorkspaceRoutePreview();
+			return null;
+		}
+
+		if (userPrompt.trim() === '' && requestFiles.length === 0) {
+			clearWorkspaceRoutePreview();
+			return null;
+		}
+
+		const routeBody = getWorkspaceRouteBody(userPrompt, requestFiles);
+		const routeKey = JSON.stringify(routeBody);
+		const requestVersion = ++workspaceRouteRequestVersion;
+
+		const route = await routeWorkspaceRequest(localStorage.token, routeBody).catch((error) => {
+			console.error('AI workspace routing failed', error);
+			return null;
+		});
+
+		if (requestVersion !== workspaceRouteRequestVersion) {
+			return null;
+		}
+
+		workspaceRoutePreviewKey = routeKey;
+		workspaceRoute = route;
+		return route;
+	};
+
+	const scheduleWorkspaceRoutePreview = () => {
+		if (workspaceRoutePreviewTimeout) {
+			clearTimeout(workspaceRoutePreviewTimeout);
+		}
+
+		if (!canUseWorkspaceRouting()) {
+			clearWorkspaceRoutePreview();
+			return;
+		}
+
+		const requestPrompt = prompt;
+		const requestFiles = structuredClone(files);
+
+		if (requestPrompt.trim() === '' && requestFiles.length === 0) {
+			clearWorkspaceRoutePreview();
+			return;
+		}
+
+		workspaceRoutePreviewTimeout = setTimeout(async () => {
+			workspaceRoutePreviewTimeout = null;
+			await previewWorkspaceRoute(requestPrompt, requestFiles);
+		}, 220);
+	};
+
+	$: {
+		const workspacePreviewDeps = [
+			prompt,
+			JSON.stringify(getWorkspaceRouteFiles(files)),
+			JSON.stringify(selectedModels),
+			atSelectedModel?.id ?? '',
+			webSearchEnabled,
+			imageGenerationEnabled,
+			$settings?.workspaceRoutingMode ?? 'auto',
+			$settings?.memory ?? false,
+			$config?.features?.enable_memories ?? false,
+			$user?.role ?? '',
+			JSON.stringify($user?.permissions ?? {})
+		];
+
+		if (!loading) {
+			workspacePreviewDeps;
+			scheduleWorkspaceRoutePreview();
+		}
+	}
+
+	onDestroy(() => {
+		if (workspaceRoutePreviewTimeout) {
+			clearTimeout(workspaceRoutePreviewTimeout);
+		}
+	});
+
 	$: if (chatIdProp) {
 		navigateHandler();
 	}
 
 	const navigateHandler = async () => {
 		loading = true;
-		workspaceRoute = null;
+		clearWorkspaceRoutePreview();
 
 		prompt = '';
 		messageInput?.setText('');
@@ -734,7 +857,7 @@
 		const init = async () => {
 			if (!chatIdProp) {
 				loading = false;
-				workspaceRoute = null;
+				clearWorkspaceRoutePreview();
 				await tick();
 			}
 
@@ -1767,32 +1890,27 @@
 	//////////////////////////
 
 	const resolveWorkspaceRoute = async (userPrompt, requestFiles) => {
-		if (($settings?.workspaceRoutingMode ?? 'auto') !== 'auto') {
-			workspaceRoute = null;
+		if (!canUseWorkspaceRouting()) {
+			clearWorkspaceRoutePreview();
 			return null;
 		}
 
-		if (atSelectedModel !== undefined) {
-			workspaceRoute = null;
+		const routeKey = getWorkspaceRouteKey(userPrompt, requestFiles);
+		if (workspaceRoute && workspaceRoutePreviewKey === routeKey) {
+			return workspaceRoute;
+		}
+
+		if (workspaceRoutePreviewTimeout) {
+			clearTimeout(workspaceRoutePreviewTimeout);
+			workspaceRoutePreviewTimeout = null;
+		}
+
+		if (userPrompt.trim() === '' && requestFiles.length === 0) {
+			clearWorkspaceRoutePreview();
 			return null;
 		}
 
-		const route = await routeWorkspaceRequest(localStorage.token, {
-			prompt: userPrompt,
-			files: requestFiles,
-			selected_model_ids: selectedModels.filter((modelId) => modelId),
-			current_features: {
-				web_search: webSearchEnabled,
-				image_generation: imageGenerationEnabled,
-				memory: $settings?.memory ?? false
-			}
-		}).catch((error) => {
-			console.error('AI workspace routing failed', error);
-			return null;
-		});
-
-		workspaceRoute = route;
-		return route;
+		return await previewWorkspaceRoute(userPrompt, requestFiles);
 	};
 
 	const submitPrompt = async (userPrompt, { _raw = false } = {}) => {
@@ -2110,7 +2228,7 @@
 			}
 		}
 
-		if ($settings?.memory ?? false) {
+		if (isMemoryFeatureAvailable() && ($settings?.memory ?? false)) {
 			features = { ...features, memory: true };
 		}
 
@@ -3000,6 +3118,8 @@
 								<Placeholder
 									{history}
 									{selectedModels}
+									workspaceRoutingMode={$settings?.workspaceRoutingMode ?? 'auto'}
+									{workspaceRoute}
 									bind:messageInput
 									bind:files
 									bind:prompt

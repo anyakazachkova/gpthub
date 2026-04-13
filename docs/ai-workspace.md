@@ -53,7 +53,21 @@ The chat header now includes:
 
 The selected route is shown inline in the header so the auto behavior is visible and debuggable.
 
-### 3. Reuse of existing Open WebUI strengths
+### 3. Live route preview in the composer
+
+The workspace now previews routing before the message is sent.
+
+As the user types, attaches files, or adds links, the UI updates with:
+
+- detected task type
+- suggested model
+- enabled tools and features for the turn
+- workflow steps for the request
+- whether memory is recommended for continuity
+
+This makes the orchestration transparent instead of feeling like a hidden rule engine.
+
+### 4. Reuse of existing Open WebUI strengths
 
 This fork intentionally builds on native Open WebUI capabilities instead of replacing them:
 
@@ -68,6 +82,7 @@ This fork intentionally builds on native Open WebUI capabilities instead of repl
 - Auto routing is request-level, not a permanent change to the user's default model list.
 - Manual `@model` targeting still wins over auto routing.
 - Saved memories are not reimplemented; the router is designed to work with Open WebUI's existing memory system.
+- Route previews are debounced in the chat composer so the UX stays responsive while typing.
 
 ## Recommended next steps
 
@@ -75,4 +90,4 @@ This fork intentionally builds on native Open WebUI capabilities instead of repl
 2. Extend routing from heuristic rules to scored policies configurable per team.
 3. Add task-specific tool presets, especially for link parsing and structured web extraction.
 4. Add analytics for route decisions, selected models, and fallback reasons.
-5. Add automated tests for router classification and model scoring.
+5. Add end-to-end frontend checks once a Node-enabled CI environment is available.
